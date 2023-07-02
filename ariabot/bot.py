@@ -12,10 +12,10 @@ from contextlib import suppress
 from datetime import datetime
 
 from telethon import Button, events, functions
-from telethon.errors import AlreadyInConversationError
+from telethon.errors import AlreadyInConversationError, MessageNotModifiedError
 
 from ariabot import Aria2, bot, RPC_TOKEN, RPC_URL, USER_ID
-from ariabot.util import byte2Readable, getFileName, hum_convert, progress, split_list
+from ariabot.util import byte2Readable, flatten_list, format_lists, format_name, getFileName, hum_convert, progress, split_list
 
 
 @bot.on(events.NewMessage(pattern="/start"))
@@ -260,17 +260,11 @@ async def unstopTask(event):
     buttons = []
     for task in tasks:
         fileName = getFileName(task)
-        buttons.append(Button.inline(fileName, task['gid']))
-    buttons = split_list(buttons, 2)
-    buttons.append(get_cancel())
+        buttons.append(Button.inline(format_name(fileName), task['gid']))
     try:
         async with bot.conversation(event.sender.id, timeout=60) as conv:
-            msg = await conv.send_message('请选择要开始▶ 的任务', buttons=buttons)
-            res = await conv.wait_event(press_event(event))
-            data = res.data.decode()
-            if data == 'cancel':
-                await bot.edit_message(msg, '取消选择')
-            else:
+            res, data, msg = await get_pagesplit('请选择要开始▶ 的任务', event, buttons, conv)
+            if res:
                 await msg.delete()
                 await Aria2.client.unpause(data)
     except AlreadyInConversationError:
@@ -290,17 +284,11 @@ async def stopTask(event):
     for task in tasks:
         fileName = getFileName(task)
         gid = task['gid']
-        buttons.append(Button.inline(fileName, gid))
-    buttons = split_list(buttons, 2)
-    buttons.append(get_cancel())
+        buttons.append(Button.inline(format_name(fileName), gid))
     try:
         async with bot.conversation(event.sender.id, timeout=60) as conv:
-            msg = await conv.send_message('请选择要暂停⏸ 的任务', buttons=buttons)
-            res = await conv.wait_event(press_event(event))
-            data = res.data.decode()
-            if data == 'cancel':
-                await bot.edit_message(msg, '取消选择')
-            else:
+            res, data, msg = await get_pagesplit('请选择要暂停⏸ 的任务', event, buttons, conv)
+            if res:
                 await msg.delete()
                 await Aria2.client.pause(data)
     except AlreadyInConversationError:
@@ -323,21 +311,15 @@ async def removeTask(event):
     for task in tasks:
         fileName = getFileName(task)
         gid = task['gid']
-        buttons.append(Button.inline(fileName, 'del->' + gid))
+        buttons.append(Button.inline(format_name(fileName), 'del->' + gid))
     for task in tasks3:
         fileName = getFileName(task)
         gid = task['gid']
-        buttons.append(Button.inline('结束·' + fileName, 'result->' + gid))
-    buttons = split_list(buttons, 2)
-    buttons.append(get_cancel())
+        buttons.append(Button.inline(format_name('结束·' + fileName), 'result->' + gid))
     try:
         async with bot.conversation(event.sender.id, timeout=60) as conv:
-            msg = await conv.send_message('请选择要删除❌ 的任务', buttons=buttons)
-            res = await conv.wait_event(press_event(event))
-            data = res.data.decode()
-            if data == 'cancel':
-                await bot.edit_message(msg, '取消选择')
-            else:
+            res, data, msg = await get_pagesplit('请选择要删除❌ 的任务', event, buttons, conv)
+            if res:
                 mode, gid = data.split('->', 1)
                 if mode == 'result':
                     await Aria2.client.removeDownloadResult(gid)
@@ -363,17 +345,11 @@ async def editTaskFile(event):
     for task in tasks:
         fileName = getFileName(task)
         gid = task['gid']
-        buttons.append(Button.inline(fileName, gid))
-    buttons = split_list(buttons, 2)
-    buttons.append(get_cancel())
+        buttons.append(Button.inline(format_name(fileName), gid))
     try:
         async with bot.conversation(event.sender.id, timeout=60) as conv:
-            msg = await conv.send_message('请选择要修改的任务', buttons=buttons)
-            res = await conv.wait_event(press_event(event))
-            data = res.data.decode()
-            if data == 'cancel':
-                await bot.edit_message(msg, '取消选择')
-            else:
+            res, data, msg = await get_pagesplit('请选择要修改的任务', event, buttons, conv)
+            if res:
                 await editToTaskFile(res, conv, data)
     except AlreadyInConversationError:
         wait = await bot.send_message(event.sender.id, "无法在同个聊天内启动多个对话")
@@ -416,39 +392,86 @@ async def removeAll(event):
 
 # 编辑文件
 async def editToTaskFile(event, conv, gid):
+    msg = await event.edit('请稍后正在查询...')
     filesinfo = await Aria2.client.getFiles(gid)
     buttons = []
     for task in filesinfo:
-        buttons.append(Button.inline(task['index'] + ':' + os.path.basename(task['path'].replace(' ', '')), task['index']))
-    buttons = split_list(buttons, 2)
-    buttons.append([Button.inline('排除', 'exclude'), Button.inline('选择', 'over')])
-    buttons.append(get_cancel())
-    msg = await event.edit('请选择要下载的任务(可多选)', buttons=buttons)
+        buttons.append(Button.inline(format_name(task['index'] + ':' + os.path.basename(task['path'].replace(' ', ''))), task['index']))
+    size, line = 2, 10
+    buttons = split_list(buttons, size)
+    page = 0
     ids = []
     while True:
-        res = await conv.wait_event(press_event(event))
-        data = res.data.decode()
-        if data == 'cancel':
+        btns = buttons
+        if len(btns) > line:
+            btns = split_list(btns, line)
+            my_btns = [
+                Button.inline('上一页', data='up'),
+                Button.inline(f'{page + 1}/{len(btns)}', data='jump'),
+                Button.inline('下一页', data='next')
+            ]
+            if page > len(btns) - 1:
+                page = 0
+            new_btns = btns[page]
+            new_btns.append(my_btns)
+        else:
+            new_btns = btns
+        new_btns.append([Button.inline('当页全选', 'checkall'), Button.inline('排除选择', 'exclude'), Button.inline('包含选择', 'over')])
+        new_btns.append(get_cancel())
+        with suppress(MessageNotModifiedError):
+            msg = await msg.edit('请选择要下载的任务(可多选)' + (f"\n当前选择：{format_lists(ids)}" if ids else ''), buttons=new_btns)
+        res_1 = await conv.wait_event(press_event(event))
+        data_1 = res_1.data.decode()
+        if data_1 == 'cancel':
             await bot.edit_message(msg, '取消选择')
             return
-        elif data == 'over':
+        elif data_1 == 'up':
+            page -= 1
+            if page < 0:
+                page = len(btns) - 1
+            continue
+        elif data_1 == 'next':
+            page += 1
+            if page > len(btns) - 1:
+                page = 0
+            continue
+        elif data_1 == 'jump':
+            page_btns = [Button.inline(f'第 {i + 1} 页 {1 + i * line * size} - {(1 + i) * line * size}', data=str(i)) for i in range(len(btns))]
+            page_btns = split_list(page_btns, 3)
+            page_btns.append([Button.inline('返回', data='cancel')])
+            await bot.edit_message(msg, '请选择跳转页面', buttons=page_btns)
+            res_2 = await conv.wait_event(press_event(event))
+            data_2 = res_2.data.decode()
+            if data_2 == 'cancel':
+                continue
+            else:
+                page = int(data_2)
+                continue
+        elif data_1 == 'over':
             break
-        elif data == 'exclude':
+        elif data_1 == 'exclude':
             numbers = [str(i) for i in range(1, len(filesinfo) + 1)]
             ids = [i for i in numbers if i not in ids]
             break
-        elif data in ids:
-            continue
+        elif data_1 in ids:
+            ids.remove(data_1)
+        elif data_1 == 'checkall':
+            checkall = flatten_list(new_btns)
+            pageids = [id for i in checkall if (id := i.to_dict()['data'].decode()).isdigit()]
+            if set(pageids).issubset(set(ids)):
+                ids = list(set(ids) - set(pageids))
+            else:
+                ids.extend(pageids)
         else:
-            ids.append(data)
-            ids.sort(key=lambda x: int(x))
-            await msg.edit(msg.text + f"\n当前选择：{','.join(ids)}")
-            if len(ids) == len(filesinfo):
-                break
+            ids.append(data_1)
+        ids = list(set(ids))
+        ids.sort(key=lambda x: int(x))
+        if len(ids) == len(filesinfo):
+            break
     if ids:
-        msg = await bot.edit_message(msg, f"当前选择：{','.join(ids)}")
-        data = {'select-file': ','.join(ids), 'bt-remove-unselected-file': 'true'}
-        await Aria2.client.changeOption(gid, data)
+        msg = await bot.edit_message(msg, f"当前选择：{format_lists(ids)}")
+        args = {'select-file': ','.join(ids), 'bt-remove-unselected-file': 'true'}
+        await Aria2.client.changeOption(gid, args)
         await msg.edit(msg.text + '\n修改完成')
     else:
         await bot.edit_message(msg, f"未修改")
@@ -488,3 +511,56 @@ def get_menu():
 
 def get_cancel():
     return [Button.inline('取消', 'cancel')]
+
+
+async def get_pagesplit(text, event, buttons, conv):
+    size, line = 2, 5
+    buttons = split_list(buttons, size)
+    page = 0
+    msg = await conv.send_message(text)
+    while True:
+        btns = buttons
+        if len(btns) > line:
+            btns = split_list(btns, line)
+            my_btns = [
+                Button.inline('上一页', data='up'),
+                Button.inline(f'{page + 1}/{len(btns)}', data='jump'),
+                Button.inline('下一页', data='next')
+            ]
+            if page > len(btns) - 1:
+                page = 0
+            new_btns = btns[page]
+            new_btns.append(my_btns)
+        else:
+            new_btns = btns
+        new_btns.append(get_cancel())
+        await msg.edit(text, buttons=new_btns)
+        res = await conv.wait_event(press_event(event))
+        data = res.data.decode()
+        if data == 'cancel':
+            await bot.edit_message(msg, '取消选择')
+            return None, None, msg
+        elif data == 'up':
+            page -= 1
+            if page < 0:
+                page = len(btns) - 1
+            continue
+        elif data == 'next':
+            page += 1
+            if page > len(btns) - 1:
+                page = 0
+            continue
+        elif data == 'jump':
+            page_btns = [Button.inline(f'第 {i + 1} 页 {1 + i * line * size} - {(1 + i) * line * size}', data=str(i)) for i in range(len(btns))]
+            page_btns = split_list(page_btns, 3)
+            page_btns.append([Button.inline('返回', data='cancel')])
+            await bot.edit_message(msg, '请选择跳转页面', buttons=page_btns)
+            res_2 = await conv.wait_event(press_event(event))
+            data_2 = res_2.data.decode()
+            if data_2 == 'cancel':
+                continue
+            else:
+                page = int(data_2)
+                continue
+        else:
+            return res, data, msg
