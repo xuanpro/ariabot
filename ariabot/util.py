@@ -68,3 +68,57 @@ def split_list(datas, n, row: bool = True):
         end = int((i + 1) * n)
         _datas.append(datas[start:end])
     return _datas
+
+
+def format_name(string):
+    """
+    格式化文件名
+    """
+    head = end = ''
+    middle = string
+    if ':' in string:
+        head, middle = string.split(':', 1)
+    if '.' in middle:
+        middle, end = middle.rsplit('.', 1)
+    length = 15 - len(head + end) - 3
+    middle = middle[:((length + 1) // 2)] + '~' + middle[-(length - (length + 1) // 2):]
+    info = f"{head}:" if head else ""
+    info += middle
+    info += f".{end}" if end else ""
+    return info
+
+
+def format_lists(lst):
+    """
+    连续数字格式化
+    """
+    result = []
+    start = None
+    for i, num in enumerate(lst):
+        num = int(num)
+        if start is None:
+            start = num
+        if i + 1 == len(lst) or int(lst[i + 1]) != num + 1:
+            if start == num:
+                result.append(str(start))
+            else:
+                result.append(f"{start}~{num}")
+            start = None
+    return ", ".join(result)
+
+
+def flatten_list(nested_list):
+    """
+    扁平化列表
+    """
+    flattened_list = []
+    stack = [nested_list]
+
+    while stack:
+        current = stack.pop()
+        if isinstance(current, list):
+            stack.extend(current[::-1])
+        else:
+            flattened_list.append(current)
+
+    return flattened_list
