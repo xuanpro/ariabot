@@ -44,10 +44,7 @@ class Aria2Client:
     async def on_download_complete(self, _trigger, data):
         gid = data['params'][0]['gid']
         tellStatus = await self.client.tellStatus(gid)
-        files = tellStatus['files']
-        for file in files:
-            path = file['path']
-            await self.bot.send_message(self.user, '下载完成:\n\n' + path)
+        await self.bot.send_message(self.user, f'{getFileName(tellStatus)}\n\n 任务下载完成')
 
     async def on_download_error(self, _trigger, data):
         gid = data['params'][0]['gid']
