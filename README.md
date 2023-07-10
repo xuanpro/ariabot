@@ -13,14 +13,14 @@
 
 ```bash
 docker run -dit \
-    -e API_ID="xxxxxx" \
-    -e API_HASH="xxxxxx" \
-    -e BOT_TOKEN="xxxxxx" \
-    -e USER_ID="xxxxxx" \
-    -e RPC_URL="ws://127.0.0.1:6800/jsonrpc" \
-    -e RPC_TOKEN="xxxxxx" \
-    --name ariabot \
-    --restart unless-stopped \
+  -e API_ID="xxxxxx" \
+  -e API_HASH="xxxxxx" \
+  -e BOT_TOKEN="xxxxxx" \
+  -e USER_ID="xxxxxx" \
+  -e RPC_URL="ws://127.0.0.1:6800/jsonrpc" \
+  -e RPC_TOKEN="xxxxxx" \
+  --name ariabot \
+  --restart unless-stopped \
 xuanpro/ariabot:latest
 ```
 
