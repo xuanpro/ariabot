@@ -402,7 +402,7 @@ async def editToTaskFile(event, conv, gid):
     page = 0
     ids = []
     while True:
-        btns = buttons
+        btns = list(buttons)
         if len(btns) > line:
             btns = split_list(btns, line)
             my_btns = [
@@ -471,7 +471,8 @@ async def editToTaskFile(event, conv, gid):
     if ids:
         msg = await bot.edit_message(msg, f"当前选择：{format_lists(ids)}")
         args = {'select-file': ','.join(ids), 'bt-remove-unselected-file': 'true'}
-        await Aria2.client.changeOption(gid, args)
+        with suppress(Exception):
+            await Aria2.client.changeOption(gid, args)
         await msg.edit(msg.text + '\n修改完成')
     else:
         await bot.edit_message(msg, f"未修改")
