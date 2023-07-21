@@ -125,10 +125,10 @@ async def lisenter(event):
         await event.respond("键盘已关闭\n发送 /menu 开启键盘", buttons=Button.clear())
         return
 
-    if 'http' in text or 'magnet' in text:
+    if 'http' in text or 'magnet' in text or 'ftp' in text:
 
         pat1 = re.compile(r'magnet:\?xt=urn:btih:[0-9a-fA-F]{40,}.*')
-        pat2 = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
+        pat2 = re.compile(r'(?:http[s]?|ftp)://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+')
 
         res1 = pat1.findall(text)
         res2 = pat2.findall(text)
